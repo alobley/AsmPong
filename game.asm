@@ -80,9 +80,7 @@ Start:
     call Mov_Cursor
 
     ; Initially draw everything to the screen
-    call Move_Player_Paddle
-    call Move_Computer_Paddle
-    call Reset_Ball_Pos
+    call Render_Screen
 
     ; Initialize the keyboard driver
     call Enable_Keyboard
@@ -188,6 +186,29 @@ End_Game:
 ;
 ; MAIN
 ;
+
+;
+; RNG
+;
+
+next: dw 0
+
+; This function created a psuedo-random number. It is very rudimentary.
+; OUT: random number in ax
+Get_Random_Numer:
+    mov ax, [next]
+    mov bx, 1234
+    mul bx
+    mov word [next], ax
+    add ax, 12345
+    mov bx, 65535
+    div bx
+    mov ax, dx
+
+    ret
+;
+; RNG
+;
     
 ;
 ; KEYBOARD
@@ -254,7 +275,7 @@ Detect_Collision:
     ; The logic for colliding with the right wall
 
     ; Keep the ball from going out of bounds
-    mov word [BallX], 79
+    mov word [BallX], 78
     call Reset_Ball_Pos
 
     ; Invert the sign of the ball's X speed (BallXSpeeed = -BallXSpeed)
@@ -366,11 +387,35 @@ Detect_Collision:
 Render_Screen:
     ; This function calls all the other rendering functions so that they don't have to be retyped one by one
     call Clear_Screen
-    call Move_Computer_Paddle
     call Move_Player_Paddle
     call Reset_Ball_Pos
     call Draw_Scores
     call Draw_Net
+    call Move_Computer_Paddle
+
+    cmp word [WrongMoveCounter], 5
+    je .get_mistake
+    
+    ret
+
+.get_mistake:
+    call Get_Random_Numer
+    cmp ax, 6554
+    jnl .normal
+    jl .mistake
+
+.mistake:
+    mov word [MistakeMade], 1
+    cmp word [WrongMoveCounter], 11
+    jl Make_Mistake
+    mov word [MistakeMade], 0
+    jmp No_Mistake
+    ret
+
+.normal:
+    cmp word [MistakeMade], 1
+    je Make_Mistake
+    jmp No_Mistake
     ret
 
 
@@ -453,11 +498,11 @@ Move_Player_Paddle:
 
 .mov_left:
     ; Decrease the player's X value if moving left
-    dec byte [Playerxval]
+    dec word [Playerxval]
     jmp .continue
 .mov_right:
     ; Increase the player's X value if moving right
-    inc byte [Playerxval]
+    inc word [Playerxval]
     jmp .continue
 
 ;
@@ -487,19 +532,34 @@ Set_Flag_None:
 
 
 
-
-Move_Computer_Paddle:
-    ; Move the computer's paddle
+Make_Mistake:
+    inc word [WrongMoveCounter]
+    ; Random number generator said the computer should make a mistake
     mov ax, [BallX]                 ; Move the ball's X value into ax
     sub ax, 5                       ; Subtract 5 from that value to make it be detected as over the center of the computer's paddle
+
+    ; Invert the sign of the ball's X position to make it inaccurate
+    not ax
+    inc ax
+    
     cmp word [Computerxval], ax     ; Is the new ball X value equal to the computer's X value?
-    jg .mov_left                    ; If the computer's X value is greater, move left
+    jg Mov_Computer_Left                    ; If the computer's X value is greater, move left
 
     ; Otherwise, move right
     cmp word [Computerxval], ax
-    jl .mov_right
+    jl Mov_Computer_Right
 
-.continue:
+No_Mistake:
+    mov ax, [BallX]                 ; Move the ball's X value into ax
+    sub ax, 5                       ; Subtract 5 from that value to make it be detected as over the center of the computer's paddle
+    cmp word [Computerxval], ax     ; Is the new ball X value equal to the computer's X value?
+    jg Mov_Computer_Left                   ; If the computer's X value is greater, move left
+
+    ; Otherwise, move right
+    cmp word [Computerxval], ax
+    jl Mov_Computer_Right
+
+Move_Computer_Paddle:
     mov ax, [Computerxval]          ; Put the computer's X value into ax
     mov word [DrawXVal], ax         ; So that it can be sent to the draw function's X value
     
@@ -507,23 +567,22 @@ Move_Computer_Paddle:
 
     mov dx, 10                      ; Repeat 10 times
     mov al, 219                     ; ASCII solid block
-
     call Draw_To_Screen             ; Draw to the screen
 
     ret                             ; Return
 
-.mov_left:
+Mov_Computer_Left:
     ; Move the computer paddle left
     cmp word [Computerxval], 0      ; Has the paddle reached the left side?
-    je .continue                    ; If so, do not continue moving
-    dec byte [Computerxval]         ; Otherwise, move the paddle left by one
-    jmp .continue                   ; Continue executing the function
-.mov_right:
+    je Move_Computer_Paddle         ; If so, do not continue moving
+    dec word [Computerxval]         ; Otherwise, move the paddle left by one
+    jmp Move_Computer_Paddle        ; Continue executing the function
+Mov_Computer_Right:
     ; Move the computer paddle right
     cmp word [Computerxval], 70     ; Has the computer's paddle reached the right side?
-    je .continue                    ; If so, do not continue moving
-    inc byte [Computerxval]         ; Otherwise, move the paddle right by one
-    jmp .continue                   ; Continue executing the function
+    je Move_Computer_Paddle         ; If so, do not continue moving
+    inc word [Computerxval]         ; Otherwise, move the paddle right by one
+    jmp Move_Computer_Paddle        ; Continue executing the function
 
 
 ; DrawXVal = x value
@@ -634,6 +693,9 @@ Set_Video_Mode:
 ;
 ; DATA
 ;
+WrongMoveCounter: dw 0                  ; How many wrong moves that should be made
+MistakeMade: dw 0
+
 Playerxval: dw 35                       ; the X position (left side) of the player's paddle
 Computerxval: dw 35                     ; The X position (left side) of the computer's paddle
 
